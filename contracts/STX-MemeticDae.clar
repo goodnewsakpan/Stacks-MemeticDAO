@@ -49,3 +49,71 @@
 (define-read-only (get-block-height)
   (var-get current-block-height)
 )
+
+
+;; Advanced Transfer with Manual Block Height Check
+(define-public (transfer 
+  (amount uint) 
+  (recipient principal)
+)
+  (let 
+    (
+      ;; Retrieve last transfer block for sender
+      (last-transfer-info 
+        (default-to 
+          {last-transfer-block: u0} 
+          (map-get? transfer-last-block tx-sender)
+        )
+      )
+
+      ;; Current block height
+      (current-block (var-get current-block-height))
+    )
+    ;; Check transfer cooldown (10 block minimum between transfers)
+    (asserts! 
+      (>= current-block (+ (get last-transfer-block last-transfer-info) u10)) 
+      ERR-TRANSFER-COOLDOWN
+    )
+
+    ;; Perform token transfer
+    (try! (ft-transfer? memecoin amount tx-sender recipient))
+
+    ;; Update last transfer block for sender
+    (map-set transfer-last-block 
+      tx-sender 
+      {last-transfer-block: current-block}
+    )
+
+    (ok true)
+  )
+)
+
+
+
+;; Staking Mechanism with Block Height
+(define-public (stake-tokens 
+  (amount uint) 
+  (lock-period uint)
+)
+  (let 
+    (
+      ;; Current block height
+      (current-block (var-get current-block-height))
+
+      ;; Calculate unlock block
+      (unlock-block (+ current-block lock-period))
+    )
+    ;; Transfer tokens to contract
+    (try! (transfer amount (as-contract tx-sender)))
+
+    ;; Store staking information with explicit block height
+    (map-set staking-deposits tx-sender {
+      amount: amount,
+      stake-block: current-block,
+      unlock-block: unlock-block
+    })
+
+    (ok true)
+  )
+)
+
